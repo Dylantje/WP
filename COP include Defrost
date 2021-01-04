@@ -1,0 +1,45 @@
+return {
+    on = {
+        devices = {
+            67, 68, 49
+        }
+    },
+    logging = 
+    {
+        level = domoticz.LOG_DEBUG, -- for debugging
+        --level = domoticz.LOG_INFO,
+        marker = "WP vermogen met Dt en Dflow"
+    },
+    data = {
+          lmin = { history = true, maxItems = 10 },
+          verschilT = { history = true, maxItems = 10 }
+    },
+    execute = function(domoticz, device)
+        local CvVerschil = domoticz.devices(58)  -- Temperatuur verschil CV in en uit 
+        local Stroming = domoticz.devices(43)
+        local Vermogen = domoticz.devices (62)
+        local Ptotal = domoticz.devices (64)
+        if  (CvVerschil.temperature >= 0) then
+        domoticz.data.lmin.add(domoticz.devices(43).flow)  
+        local flow1 = domoticz.data.lmin.get(1).data
+        local averageF = domoticz.data.lmin.avg()
+        domoticz.data.verschilT.add(domoticz.devices(58).temperature)  
+        local temp1 = domoticz.data.verschilT.get(1).data
+        local averageT = domoticz.data.verschilT.avg()
+        local Opgewekt = averageF * 60 * averageT * 1,1617
+        local Opgewekt = domoticz.utils.round(Opgewekt)
+        Vermogen.updateEnergy (Opgewekt, actualWatt)
+        Ptotal.updateElectricity (Opgewekt)
+        domoticz.log('Device ' .. 62 .. ' was changed', domoticz.LOG_INFO)
+        domoticz.log ('Huidige flow is:  '  ..  flow1)
+        domoticz.log('Gemiddelde flow is : '  ..   averageF)
+        domoticz.log ('Huidige temp is: '  ..  temp1)
+        domoticz.log('Gemiddelde temp is : '  ..   averageT)
+        domoticz.log('Opgewekte vermogen is: '  ..  Opgewekt)       
+        else 
+        Opgewekt = 0
+        Vermogen.updateEnergy (Opgewekt, actualWatt)
+    end
+
+    end
+}
