@@ -1,0 +1,36 @@
+return
+{
+    on =
+    {
+        devices =
+        {
+            55,
+        },
+    },
+
+    logging =
+    {
+        level = domoticz.LOG_DEBUG,
+    },
+
+
+    data =
+    {
+        eerder =
+        {
+            initial = 'initial',
+        },
+    },
+
+    execute = function(domoticz, device)
+        local numberDefrosts = domoticz.devices(102)
+        if domoticz.data.eerder ~= device.state then
+            domoticz.data.eerder = device.state
+            if device.state == 'On' then
+                numberDefrosts.updateCounter(numberDefrosts.counter + 1)
+            end
+        else
+          numberDefrosts.updateCounter(numberDefrosts.counter)                
+        end
+    end
+}
