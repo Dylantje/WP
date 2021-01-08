@@ -1,1 +1,136 @@
+-- Thanks to me Albert from tweakers
 
+local scriptVar = 'COP berekening'
+
+return
+{
+    on =
+    {
+        timer =
+        {
+            'every hour',
+        },
+
+        devices =
+        {
+            'Testtrigger'
+        },
+
+        httpResponses =
+        {
+            scriptVar .. '*',
+        },
+    },
+
+    logging =
+    {
+        level = domoticz.LOG_DEBUG,
+    },
+
+    data =
+    {
+        WPo =
+        {
+            initial = {},
+        },
+        WPv =
+        {
+            initial = {},
+        },
+        COP =
+        {
+            initial = {},
+        },
+        WPb =
+        {
+            initial = {},
+        },
+    },
+
+    execute = function(dz, item)
+
+        -- ***** De settings onder deze regel *****
+        local WPo = dz.devices(64) -- opgewekte vermogen
+        local WPv = dz.devices(3) -- opgenomen vermogen
+        local WPb = dz.devices(71) -- backup vermogen                     -->> Change xxx to id of backup P device<<--
+         -- ***** Geen aanpassingen nodig na deze regel *****
+
+        local function getGraphData(id, delay)
+            url = dz.settings['Domoticz url'] .. '/json.htm?type=graph&sensor=counter&range=year&idx=' .. id
+            dz.openURL({ url = url, callback = scriptVar .. '_' .. id}).afterSec(delay or 0)
+        end
+
+        local function domoticzNotify()
+
+            dz.notify(
+                "Domoticz", "COP berekening Warmtepomp" ..'\n' ..
+                " " ..'\n' ..
+                "Deze maand opgewekt: "  .. dz.data.WPo.month .. "kWh" ..'\n' ..
+                "Deze maand verbruikt: "  .. dz.data.WPv.month .. "kWh" ..'\n' ..
+                "Deze maand backup: "  .. dz.data.WPb.month .. "kWh" ..'\n' ..
+                "Dit jaar opgewekt: "  .. dz.data.WPo.year .. "kWh" ..'\n' ..
+                "Dit jaar verbruikt: "  .. dz.data.WPv.year .. "kWh" .. '\n' ..
+                "Dit jaar backup: "  .. dz.data.WPb.year .. "kWh", dz.PRIORITY_NORMAL,dz.SOUND_DEFAULT, "" , "telegram"
+             )
+            dz.utils.dumpTable(dz.data)
+        end
+
+        local function calcCOP()
+            dz.data.COP.month = dz.utils.round(dz.data.WPo.month / ( dz.data.WPv.month + dz.data.WPb.month ),2)
+            dz.data.COP.year = dz.utils.round(dz.data.WPo.year / ( dz.data.WPv.year + dz.data.WPb.year ),2)
+        end
+
+        local function processJSON(t)
+            local key
+            local id = tonumber(item.trigger:match('%d+')) -- id van trigger ophalen
+
+            if id == WPo.id then key = 'WPo'
+            elseif id == WPb.id then key = 'WPb'
+            else key = 'WPv' end
+
+            local day = 86400 -- (24 * 60 * 60)
+
+            local volume, yearVolume, monthVolume = 0, 0, 0
+            local currentMonthIdentifier = dz.time.rawDate:sub(1,4) .. '%-' .. dz.time.rawDate:sub(6,7)
+            local startofWeek = os.date("%Y-%m-%d",os.time()- ( dz.time.wday - 1 ) * day)
+
+            for index, record in ipairs(t) do
+                volume = record.v
+
+                if record.d:match(dz.time.year) then
+                    yearVolume = yearVolume + volume
+                    if record.d:match(currentMonthIdentifier) then
+                        monthVolume = monthVolume + volume
+                    end
+                end
+
+            end
+
+            local function setPersistent(key)
+                dz.data[key].month = dz.utils.round(monthVolume,3)
+                dz.data[key].year = dz.utils.round(yearVolume,3)
+            end
+
+            setPersistent(key)
+
+            if key == 'WPb' then
+                 calcCOP()
+                dz.devices(123).updateCustomSensor(dz.data.COP.month)
+                dz.devices(124).updateCustomSensor(dz.data.COP.year)
+                domoticzNotify()
+            end
+        end
+
+        -- main
+        if item.isHTTPResponse and item.isJSON then
+            processJSON(item.json.result)
+        elseif item.isTimer or item.isDevice then
+            getGraphData(WPv.id)
+            getGraphData(WPo.id, 10)
+            getGraphData(WPb.id, 20)
+        else
+            dz.log('Error while retrieving data',LOG_ERROR)
+            dz.log(item, LOG_ERROR)
+        end
+    end
+}
