@@ -1,3 +1,4 @@
+--Thanks to Mealbert from tweakers
 return {
     on = {
         devices = {
